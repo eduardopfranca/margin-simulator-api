@@ -16,7 +16,7 @@ app = FastAPI()
 class MarginSimulatorService:
     URL = "https://simulador.b3.com.br/"
     
-    # XPaths mantidos conforme sua versão
+    # XPaths exatos do simulador B3
     OPTION_BUTTON_XPATH = "/html/body/app-root/mat-drawer-container/mat-drawer-content/mat-sidenav-container/mat-sidenav-content/form/div[1]/div/div[5]/div[1]/div/div[4]/label"
     TICKER_INPUT_XPATH = "/html/body/app-root/mat-drawer-container/mat-drawer-content/mat-sidenav-container/mat-sidenav-content/form/div[1]/div/div[5]/div[2]/div[1]/div[1]/div/ng-select/div/div/div[2]/input"
     ADD_BUTTON_XPATH = "/html/body/app-root/mat-drawer-container/mat-drawer-content/mat-sidenav-container/mat-sidenav-content/form/div[1]/div/div[5]/div[2]/div[3]/div/button"
@@ -28,20 +28,17 @@ class MarginSimulatorService:
 
     def fill_portfolio(self, portfolio):
         self.driver.get(self.URL)
-        time.sleep(5) # Aumentado para o Render carregar o Angular da B3
+        time.sleep(5) 
         for ticker, pos in portfolio.items():
-            # Seleciona Opção
             WebDriverWait(self.driver, 20).until(EC.element_to_be_clickable((By.XPATH, self.OPTION_BUTTON_XPATH))).click()
             time.sleep(1)
             
-            # Ticker
             input_field = self.driver.find_element(By.XPATH, self.TICKER_INPUT_XPATH)
             input_field.send_keys(ticker)
             time.sleep(1)
             ActionChains(self.driver).send_keys(Keys.RETURN).perform()
             time.sleep(1)
             
-            # Quantidades via TAB
             ActionChains(self.driver).send_keys(Keys.TAB).perform()
             active = self.driver.switch_to.active_element
             if pos.get("long", 0) != 0: active.send_keys(str(pos["long"]))
@@ -50,7 +47,6 @@ class MarginSimulatorService:
             active = self.driver.switch_to.active_element
             if pos.get("short", 0) != 0: active.send_keys(str(pos["short"]))
             
-            # Adicionar
             self.driver.find_element(By.XPATH, self.ADD_BUTTON_XPATH).click()
             time.sleep(2)
 
@@ -62,7 +58,7 @@ class MarginSimulatorService:
         checkboxes = WebDriverWait(self.driver, 15).until(EC.presence_of_all_elements_located((By.XPATH, cb_xpath)))
         for cb in checkboxes:
             if not cb.is_selected(): 
-                self.driver.execute_script("arguments[0].click();", cb) # Clique via JS é mais estável no Render
+                self.driver.execute_script("arguments[0].click();", cb)
                 time.sleep(0.5)
         
         self.driver.find_element(By.XPATH, self.CALCULATE_BUTTON_XPATH).click()
@@ -77,7 +73,7 @@ class MarginSimulatorService:
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--window-size=1920,1080")
         
-        # Caminhos específicos para o ambiente Linux do Render
+        # CAMINHOS FIXOS PARA O RENDER - Isso mata o erro de 'NoneType'
         chrome_bin = "/opt/render/.chrome/google-chrome-stable"
         chromedriver_bin = "/opt/render/.chromedriver/chromedriver"
         
@@ -85,7 +81,7 @@ class MarginSimulatorService:
             options.binary_location = chrome_bin
             service = Service(executable_path=chromedriver_bin)
         else:
-            # Fallback para ambiente local (Windows)
+            # Fallback para seu teste local no Windows
             from webdriver_manager.chrome import ChromeDriverManager
             service = Service(ChromeDriverManager().install())
         
@@ -100,11 +96,6 @@ async def calculate_margin(portfolio: dict):
         margin = service.select_all_and_calculate()
         return {"status": "success", "margin_required": margin}
     except Exception as e:
-        print(f"Erro interno: {str(e)}") # Log para o dashboard do Render
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         driver.quit()
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
