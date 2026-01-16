@@ -16,7 +16,7 @@ app = FastAPI()
 class MarginSimulatorService:
     URL = "https://simulador.b3.com.br/"
     
-    # XPaths exatos do simulador B3
+    # XPaths fornecidos por você
     OPTION_BUTTON_XPATH = "/html/body/app-root/mat-drawer-container/mat-drawer-content/mat-sidenav-container/mat-sidenav-content/form/div[1]/div/div[5]/div[1]/div/div[4]/label"
     TICKER_INPUT_XPATH = "/html/body/app-root/mat-drawer-container/mat-drawer-content/mat-sidenav-container/mat-sidenav-content/form/div[1]/div/div[5]/div[2]/div[1]/div[1]/div/ng-select/div/div/div[2]/input"
     ADD_BUTTON_XPATH = "/html/body/app-root/mat-drawer-container/mat-drawer-content/mat-sidenav-container/mat-sidenav-content/form/div[1]/div/div[5]/div[2]/div[3]/div/button"
@@ -73,7 +73,7 @@ class MarginSimulatorService:
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--window-size=1920,1080")
         
-        # CAMINHOS FIXOS PARA O RENDER - Isso mata o erro de 'NoneType'
+        # CAMINHOS FIXOS PARA O RENDER - Força o uso do que instalamos no build.sh
         chrome_bin = "/opt/render/.chrome/google-chrome-stable"
         chromedriver_bin = "/opt/render/.chromedriver/chromedriver"
         
@@ -81,7 +81,7 @@ class MarginSimulatorService:
             options.binary_location = chrome_bin
             service = Service(executable_path=chromedriver_bin)
         else:
-            # Fallback para seu teste local no Windows
+            # Fallback local para seu Windows
             from webdriver_manager.chrome import ChromeDriverManager
             service = Service(ChromeDriverManager().install())
         
@@ -96,6 +96,11 @@ async def calculate_margin(portfolio: dict):
         margin = service.select_all_and_calculate()
         return {"status": "success", "margin_required": margin}
     except Exception as e:
+        print(f"ERRO CRÍTICO: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         driver.quit()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=10000)
