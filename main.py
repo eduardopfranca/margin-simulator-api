@@ -10,14 +10,13 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
-from webdriver_manager.chrome import ChromeDriverManager
 
 app = FastAPI()
 
 class MarginSimulatorService:
     URL = "https://simulador.b3.com.br/"
     
-    # XPaths fornecidos por você
+    # XPaths mantidos conforme sua versão
     OPTION_BUTTON_XPATH = "/html/body/app-root/mat-drawer-container/mat-drawer-content/mat-sidenav-container/mat-sidenav-content/form/div[1]/div/div[5]/div[1]/div/div[4]/label"
     TICKER_INPUT_XPATH = "/html/body/app-root/mat-drawer-container/mat-drawer-content/mat-sidenav-container/mat-sidenav-content/form/div[1]/div/div[5]/div[2]/div[1]/div[1]/div/ng-select/div/div/div[2]/input"
     ADD_BUTTON_XPATH = "/html/body/app-root/mat-drawer-container/mat-drawer-content/mat-sidenav-container/mat-sidenav-content/form/div[1]/div/div[5]/div[2]/div[3]/div/button"
@@ -29,10 +28,10 @@ class MarginSimulatorService:
 
     def fill_portfolio(self, portfolio):
         self.driver.get(self.URL)
-        time.sleep(3)
+        time.sleep(5) # Aumentado para o Render carregar o Angular da B3
         for ticker, pos in portfolio.items():
             # Seleciona Opção
-            WebDriverWait(self.driver, 20).until(EC.presence_of_element_located((By.XPATH, self.OPTION_BUTTON_XPATH))).click()
+            WebDriverWait(self.driver, 20).until(EC.element_to_be_clickable((By.XPATH, self.OPTION_BUTTON_XPATH))).click()
             time.sleep(1)
             
             # Ticker
@@ -56,21 +55,18 @@ class MarginSimulatorService:
             time.sleep(2)
 
     def select_all_and_calculate(self):
-        # Calcular primeiro
         self.driver.find_element(By.XPATH, self.CALCULATE_BUTTON_XPATH).click()
-        time.sleep(3)
+        time.sleep(4)
         
-        # Checkboxes
         cb_xpath = "//datatable-row-wrapper//datatable-body-row//datatable-body-cell[1]//input[@type='checkbox']"
-        checkboxes = WebDriverWait(self.driver, 10).until(EC.presence_of_all_elements_located((By.XPATH, cb_xpath)))
+        checkboxes = WebDriverWait(self.driver, 15).until(EC.presence_of_all_elements_located((By.XPATH, cb_xpath)))
         for cb in checkboxes:
             if not cb.is_selected(): 
-                cb.click()
+                self.driver.execute_script("arguments[0].click();", cb) # Clique via JS é mais estável no Render
                 time.sleep(0.5)
         
-        # Calcular Final
         self.driver.find_element(By.XPATH, self.CALCULATE_BUTTON_XPATH).click()
-        time.sleep(3)
+        time.sleep(4)
         return self.driver.find_element(By.XPATH, self.MARGIN_VALUE_XPATH).text
 
     @staticmethod
@@ -79,11 +75,20 @@ class MarginSimulatorService:
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        # No Render, o binário do Chrome fica em um local específico se usar o script de build
-        if os.path.exists("/usr/bin/google-chrome"):
-            options.binary_location = "/usr/bin/google-chrome"
+        options.add_argument("--window-size=1920,1080")
         
-        service = Service(ChromeDriverManager().install())
+        # Caminhos específicos para o ambiente Linux do Render
+        chrome_bin = "/opt/render/.chrome/google-chrome-stable"
+        chromedriver_bin = "/opt/render/.chromedriver/chromedriver"
+        
+        if os.path.exists(chrome_bin):
+            options.binary_location = chrome_bin
+            service = Service(executable_path=chromedriver_bin)
+        else:
+            # Fallback para ambiente local (Windows)
+            from webdriver_manager.chrome import ChromeDriverManager
+            service = Service(ChromeDriverManager().install())
+        
         return webdriver.Chrome(service=service, options=options)
 
 @app.post("/calculate-margin")
@@ -95,37 +100,11 @@ async def calculate_margin(portfolio: dict):
         margin = service.select_all_and_calculate()
         return {"status": "success", "margin_required": margin}
     except Exception as e:
+        print(f"Erro interno: {str(e)}") # Log para o dashboard do Render
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         driver.quit()
 
 if __name__ == "__main__":
-    # Configuração para teste VISUAL (Local)
-    options = Options()
-    options.add_argument("--start-maximized")
-    # Removido o --headless para você ver o teste rodando
-    
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-    
-    # Seu dicionário de teste
-    test_portfolio = {
-        "BPACM502": {"long": 0, "short": 100},
-        "PETRB330": {"long": 0, "short": 200},
-        "SMALB125": {"long": 100, "short": 0}
-    }
-    
-    try:
-        service_instance = MarginSimulatorService(driver)
-        service_instance.fill_portfolio(test_portfolio)
-        resultado = service_instance.select_all_and_calculate()
-        
-        print("\n" + "="*30)
-        print(f"RESULTADO: {resultado}")
-        print("="*30)
-        
-    except Exception as e:
-        print(f"ERRO NO TESTE: {e}")
-    finally:
-        input("\nTeste finalizado. Pressione ENTER para fechar o navegador...")
-        driver.quit()
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
